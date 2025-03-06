@@ -1,9 +1,9 @@
 #include <iostream>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <sstream>
 #include <fstream>
-#include <filesystem>
 #include <windows.h>
 #include <urlmon.h>
 #include <map>
@@ -11,11 +11,12 @@
 #include <exception>
 #include <algorithm>
 #include <cctype>
+#include <shellapi.h> // Needed for ShellExecuteA
 
 #pragma comment(lib, "urlmon.lib")
 namespace fs = std::filesystem;
 
-// Segédfüggvény a whitespace levágására
+// Helper function to trim whitespace from a string
 std::string trim(const std::string& s) {
 	auto start = s.begin();
 	while (start != s.end() && std::isspace(*start)) {
@@ -28,15 +29,15 @@ std::string trim(const std::string& s) {
 	return std::string(start, end + 1);
 }
 
-// Modul interfész
+// Module interface
 class Module {
 public:
 	virtual void execute(const std::vector<std::string>& args) = 0;
-	virtual std::string getVersion() const = 0; // Verzió lekérdezése
+	virtual std::string getVersion() const = 0; // Get version info
 	virtual ~Module() {}
 };
 
-// Modulkezelő
+// Module Manager
 class ModuleManager {
 public:
 	static ModuleManager& getInstance() {
@@ -44,20 +45,19 @@ public:
 		return instance;
 	}
 
-	// Segédfüggvény: Biztosítja, hogy a "modules" könyvtár létezik
+	// Ensure that the "modules" directory exists
 	void ensureModulesDirectoryExists() {
 		try {
 			if (!fs::exists("modules")) {
 				fs::create_directory("modules");
-				std::cout << "\"modules\" mappa létrehozva." << std::endl;
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Hiba a 'modules' mappa létrehozása során: " << e.what() << std::endl;
+			std::cerr << "Error creating 'modules' folder: " << e.what() << std::endl;
 		}
 	}
 
-	// Modul letöltése (ha még nincs letöltve)
+	// Download a module (if not already downloaded)
 	void downloadModule(const std::string& moduleName) {
 		try {
 			ensureModulesDirectoryExists();
@@ -66,31 +66,31 @@ public:
 			std::string url = "https://github.com/DrJegesmedve/Mini-Shell/raw/main/modules/" + moduleName + "/" + moduleName + ".dll";
 
 			if (fs::exists(filePath)) {
-				std::cerr << "Hiba: A modul már le van töltve: " << moduleName << std::endl;
+				std::cerr << "Error: Module already installed" << std::endl;
 				return;
 			}
 
 			fs::create_directories(moduleDir);
 			HRESULT hr = URLDownloadToFileA(nullptr, url.c_str(), filePath.c_str(), 0, nullptr);
 			if (SUCCEEDED(hr)) {
-				std::cout << "Modul letöltve: " << moduleName << std::endl;
+				std::cout << "Module installed" << std::endl;
 			}
 			else {
-				std::cerr << "Modul letöltési hiba: " << moduleName << std::endl;
+				std::cerr << "Download error" << std::endl;
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Kivétel a modul letöltése során: " << e.what() << std::endl;
+			std::cerr << "Exception while downloading module: " << e.what() << std::endl;
 		}
 	}
 
-	// Modul betöltése a sessionbe
+	// Load a module into the session
 	void loadModule(const std::string& moduleName) {
 		try {
 			ensureModulesDirectoryExists();
 			std::string modulePath = "modules/" + moduleName + "/" + moduleName + ".dll";
 			if (!fs::exists(modulePath)) {
-				std::cerr << "Modul betöltési hiba: " << moduleName << " nem létezik." << std::endl;
+				std::cerr << "Module load error: " << moduleName << " module does not installed." << std::endl;
 				return;
 			}
 			HMODULE hModule = LoadLibraryA(modulePath.c_str());
@@ -103,28 +103,28 @@ public:
 					}
 					modules[moduleName] = createModule();
 					loadedModules.insert(moduleName);
-					std::cout << "Modul betöltve: " << moduleName << std::endl;
+					std::cout << "Module loaded" << std::endl;
 				}
 				else {
-					std::cerr << "Modul betöltési hiba: createModule függvényt nem találtam." << std::endl;
+					std::cerr << "Module load error: createModule function not found." << std::endl;
 					FreeLibrary(hModule);
 				}
 			}
 			else {
-				std::cerr << "Modul betöltési hiba: " << modulePath << std::endl;
+				std::cerr << "Module load error: " << modulePath << std::endl;
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Kivétel a modul betöltése során: " << e.what() << std::endl;
+			std::cerr << "Exception while loading module: " << e.what() << std::endl;
 		}
 	}
 
-	// Betölti az összes modult a "modules" könyvtárból
+	// Load all modules from the "modules" folder
 	void loadAllModules() {
 		try {
 			ensureModulesDirectoryExists();
 			if (!fs::exists("modules") || fs::is_empty("modules")) {
-				std::cerr << "Hiba: Egyetlen modul sincs letöltve." << std::endl;
+				std::cerr << "Error: No available module" << std::endl;
 				return;
 			}
 			for (const auto& entry : fs::directory_iterator("modules")) {
@@ -135,17 +135,17 @@ public:
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Uknown Error (): " << e.what() << std::endl;
+			std::cerr << "Unknown Error while loading modules: " << e.what() << std::endl;
 		}
 	}
 
-	// Modul frissítése: csak akkor, ha a modul le van töltve. Frissítés után nem töltődik be automatikusan.
+	// Update a module (only if it is already downloaded). Note: After update, it is not automatically loaded.
 	void updateModule(const std::string& moduleName) {
 		try {
 			ensureModulesDirectoryExists();
 			std::string filePath = "modules/" + moduleName + "/" + moduleName + ".dll";
 			if (!fs::exists(filePath)) {
-				std::cerr << "ERROR: The modul is not installed " << moduleName << std::endl;
+				std::cerr << "ERROR: Module is not available" << std::endl;
 				return;
 			}
 
@@ -153,23 +153,23 @@ public:
 			std::string url = "https://github.com/DrJegesmedve/Mini-Shell/raw/main/modules/" + moduleName + "/" + moduleName + ".dll";
 			HRESULT hr = URLDownloadToFileA(nullptr, url.c_str(), filePath.c_str(), 0, nullptr);
 			if (SUCCEEDED(hr)) {
-				std::cout << "Modul updtated: " << moduleName << std::endl;
+				std::cout << "Module updated" << std::endl;
 			}
 			else {
-				std::cerr << "Modul update error: " << moduleName << std::endl;
+				std::cerr << "Module update error" << std::endl;
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Uknown Error (): " << e.what() << std::endl;
+			std::cerr << "Exception while updating module: " << e.what() << std::endl;
 		}
 	}
 
-	// Frissíti az összes letöltött modult
+	// Update all downloaded modules
 	void updateAllModules() {
 		try {
 			ensureModulesDirectoryExists();
 			if (!fs::exists("modules") || fs::is_empty("modules")) {
-				std::cerr << "ERROR: There is no any installed module" << std::endl;
+				std::cerr << "ERROR: No available modules" << std::endl;
 				return;
 			}
 			for (const auto& entry : fs::directory_iterator("modules")) {
@@ -180,18 +180,18 @@ public:
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Unknown Error (download modul): " << e.what() << std::endl;
+			std::cerr << "Unknown Error (module update): " << e.what() << std::endl;
 		}
 	}
 
-	// Modul törlése (delete): a fájlrendszerből törli a DLL-t
+	// Delete a module: remove the DLL and the entire module folder from the filesystem
 	void removeModule(const std::string& moduleName) {
 		try {
 			ensureModulesDirectoryExists();
-			std::string modulePath = "modules/" + moduleName + "/" + moduleName + ".dll";
-			if (fs::exists(modulePath)) {
-				fs::remove(modulePath);
-				std::cout << "Modul deleted: " << moduleName << std::endl;
+			std::string moduleFolder = "modules/" + moduleName;
+			if (fs::exists(moduleFolder)) {
+				fs::remove_all(moduleFolder);
+				std::cout << "Module deleted" << std::endl;
 				if (modules.find(moduleName) != modules.end()) {
 					delete modules[moduleName];
 					modules.erase(moduleName);
@@ -199,20 +199,20 @@ public:
 				loadedModules.erase(moduleName);
 			}
 			else {
-				std::cerr << "ERROR: Modul is not installed: " << moduleName << std::endl;
+				std::cerr << "ERROR: Module is not available" << std::endl;
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Uknown Error (modul deletion): " << e.what() << std::endl;
+			std::cerr << "Exception while deleting module: " << e.what() << std::endl;
 		}
 	}
 
-	// Törli az összes modult (delete -all)
+	// Delete all modules (remove the entire modules folder content)
 	void removeAllModules() {
 		try {
 			ensureModulesDirectoryExists();
 			if (!fs::exists("modules") || fs::is_empty("modules")) {
-				std::cerr << "ERROR: There is no any installed module" << std::endl;
+				std::cerr << "ERROR: No available module" << std::endl;
 				return;
 			}
 			for (const auto& entry : fs::directory_iterator("modules")) {
@@ -223,7 +223,7 @@ public:
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Unkown Error (): " << e.what() << std::endl;
+			std::cerr << "Unknown Error while deleting modules: " << e.what() << std::endl;
 		}
 	}
 
@@ -256,7 +256,7 @@ public:
 			}
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Unkown Error (): " << e.what() << std::endl;
+			std::cerr << "Unknown Error during cleanup: " << e.what() << std::endl;
 		}
 	}
 
@@ -264,16 +264,16 @@ public:
 		try {
 			auto it = modules.find(moduleName);
 			if (it == modules.end() || it->second == nullptr) {
-				std::cerr << "ERROR: Modul is not loaded" << moduleName << std::endl;
+				std::cerr << "ERROR: Module is not loaded" << std::endl;
 				return;
 			}
 			it->second->execute(args);
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Kivétel a modul futtatása során: " << e.what() << std::endl;
+			std::cerr << "Exception while executing module: " << e.what() << std::endl;
 		}
 		catch (...) {
-			std::cerr << "Uknown Error when tried to run the mÍ" << std::endl;
+			std::cerr << "Unknown Error while running module command" << std::endl;
 		}
 	}
 
@@ -284,7 +284,7 @@ private:
 			cleanupModules();
 		}
 		catch (const std::exception& e) {
-			std::cerr << "Kivétel a modulkezelő inicializálása során: " << e.what() << std::endl;
+			std::cerr << "Exception during ModuleManager initialization: " << e.what() << std::endl;
 		}
 	}
 	ModuleManager(const ModuleManager&) = delete;
@@ -295,21 +295,26 @@ private:
 };
 
 void printShellHelp() {
-	std::cout << "Shell parancsok:" << std::endl;
-	std::cout << "  exit                    - Kilépés a shellből" << std::endl;
-	std::cout << "  help[/h/?]              - Súgó megjelenítése" << std::endl;
-	std::cout << "  version[/h/?]           - Shell verzió kiírása" << std::endl;
-	std::cout << "  dwl                     - Modul letöltése" << std::endl;
-	std::cout << "  load                    - Modul betöltése" << std::endl;
-	std::cout << "  update[/up]             - Modul frissítése" << std::endl;
-	std::cout << "  delete[/del]            - Modul eltávolítása" << std::endl;
-	std::cout << "  ls                      - Modulok listázása (pl.: ls mods)" << std::endl;
-	std::cout << "  modules[/mods/ext]      - Modulok listázása" << std::endl;
-	std::cout << "  <modulname> [args]      - Modul futtatása, kapcsolókkal (pl. -v a verzióhoz)" << std::endl;
+	std::cout << "Shell commands:" << std::endl;
+	std::cout << "  exit                        - Exit the shell" << std::endl;
+	std::cout << "  help[/h/?]                  - Display help" << std::endl;
+	std::cout << "  version[/v/-v]              - Display shell version" << std::endl;
+	std::cout << "  dwl                         - Download module(s)" << std::endl;
+	std::cout << "  load                        - Load module(s)" << std::endl;
+	std::cout << "  update[/up]                 - Update module(s)" << std::endl;
+	std::cout << "  delete[/del]                - Delete module(s)" << std::endl;
+	std::cout << "  ls [attribute]              - List modules or directory contents" << std::endl;
+	std::cout << "     Use 'mods/modules/ext':  list modules." << std::endl;
+	std::cout << "     Use 'drive:' or 'd:'     followed by a drive letter (e.g. ls drive:C) to list a drive." << std::endl;
+	std::cout << "     Use 'loc:'               followed by a path (e.g. ls loc:\"C:\\My Folder\") to list that directory." << std::endl;
+	std::cout << "  run <executable_path>       - Run an executable file" << std::endl;
+	std::cout << "  c or clear                  - Clear the screen" << std::endl;
+	std::cout << "  rb                          - Reboot the shell (clear screen and reload modules)" << std::endl;
+	std::cout << "  <module_name> [args]        - Run a module with arguments (use -v for version)" << std::endl;
 }
 
 int main() {
-	setlocale(LC_ALL, "hun");
+	setlocale(LC_ALL, "English");
 	std::string command;
 	while (true) {
 		std::cout << "> ";
@@ -317,7 +322,7 @@ int main() {
 		if (command.empty())
 			continue;
 
-		// Első szintű whitespace szerinti bontás
+		// Tokenize the command (splitting by whitespace)
 		std::vector<std::string> tokens;
 		std::istringstream iss(command);
 		std::string token;
@@ -329,7 +334,7 @@ int main() {
 
 		std::string mainCommand = tokens[0];
 
-		// Shell parancsok kezelése
+		// Shell built-in commands
 		if (mainCommand == "exit") {
 			break;
 		}
@@ -339,42 +344,122 @@ int main() {
 		else if (mainCommand == "version" || mainCommand == "v" || mainCommand == "-v") {
 			std::cout << "Shell Version 1.2.0" << std::endl;
 		}
+		else if (mainCommand == "c" || mainCommand == "clear") {
+			system("cls");
+		}
+		else if (mainCommand == "rb") {
+			system("cls");
+			std::cout << "Rebooting shell and reloading modules..." << std::endl;
+			ModuleManager::getInstance().loadAllModules();
+		}
 		else if (mainCommand == "ls") {
-			if (tokens.size() >= 2 && (tokens[1] == "mods" || tokens[1] == "modules" || tokens[1] == "ext")) {
-				if (fs::exists("modules") && !fs::is_empty("modules")) {
-					for (const auto& entry : fs::directory_iterator("modules")) {
-						if (entry.is_directory()) {
-							std::cout << "- " << entry.path().filename().string() << std::endl;
+			// Enhanced ls command: list modules or directory contents
+			if (tokens.size() >= 2) {
+				std::string param = tokens[1];
+				if (param.rfind("drive:", 0) == 0 || param.rfind("d:", 0) == 0) {
+					std::string driveLetter;
+					if (param.rfind("drive:", 0) == 0)
+						driveLetter = param.substr(6);
+					else
+						driveLetter = param.substr(2);
+					std::string path = driveLetter + ":\\";
+					std::cout << "Listing drive " << driveLetter << ":" << std::endl;
+					try {
+						for (auto& entry : fs::directory_iterator(path)) {
+							std::cout << entry.path().filename().string() << std::endl;
 						}
+					}
+					catch (const std::exception& e) {
+						std::cerr << "Error listing drive: " << e.what() << std::endl;
+					}
+				}
+				else if (param.rfind("loc:", 0) == 0) {
+					std::string location = param.substr(4);
+					// Remove surrounding quotes if any
+					if ((location.front() == '\'' && location.back() == '\'') ||
+						(location.front() == '"' && location.back() == '"')) {
+						location = location.substr(1, location.size() - 2);
+					}
+					std::cout << "Listing location: " << location << std::endl;
+					try {
+						for (auto& entry : fs::directory_iterator(location)) {
+							std::cout << entry.path().filename().string() << std::endl;
+						}
+					}
+					catch (const std::exception& e) {
+						std::cerr << "Error listing location: " << e.what() << std::endl;
+					}
+				}
+				else if (param == "mods" || param == "modules" || param == "ext") {
+					if (fs::exists("modules") && !fs::is_empty("modules")) {
+						for (const auto& entry : fs::directory_iterator("modules")) {
+							if (entry.is_directory()) {
+								std::cout << "- " << entry.path().filename().string() << std::endl;
+							}
+						}
+					}
+					else {
+						std::cerr << "Error: No available module" << std::endl;
 					}
 				}
 				else {
-					std::cerr << "Hiba: Egyetlen modul sincs letöltve." << std::endl;
-				}
-			}
-			else {
-				std::cerr << "ERROR: ls <mods/modules/ext>" << std::endl;
-			}
-		}
-		else if (mainCommand == "modules" || mainCommand == "mods" || mainCommand == "ext") {
-			// Ugyanaz a listázás, mint az ls parancsnál
-			if (fs::exists("modules") && !fs::is_empty("modules")) {
-				for (const auto& entry : fs::directory_iterator("modules")) {
-					if (entry.is_directory()) {
-						std::cout << "- " << entry.path().filename().string() << std::endl;
+					// Treat parameter as a directory path
+					std::string path = param;
+					std::cout << "Listing location: " << path << std::endl;
+					try {
+						for (auto& entry : fs::directory_iterator(path)) {
+							std::cout << entry.path().filename().string() << std::endl;
+						}
+					}
+					catch (const std::exception& e) {
+						std::cerr << "Error listing location: " << e.what() << std::endl;
 					}
 				}
 			}
 			else {
-				std::cerr << "Hiba: Egyetlen modul sincs letöltve." << std::endl;
+				// No parameter provided: list current directory
+				std::string path = fs::current_path().string();
+				std::cout << "Listing current directory: " << path << std::endl;
+				try {
+					for (auto& entry : fs::directory_iterator(path)) {
+						std::cout << entry.path().filename().string() << std::endl;
+					}
+				}
+				catch (const std::exception& e) {
+					std::cerr << "Error listing current directory: " << e.what() << std::endl;
+				}
 			}
 		}
-		// Kezeljük a modulokra vonatkozó parancsokat: dwl, load, update/up, delete/del
+		else if (mainCommand == "run") {
+			// Run an executable file
+			if (tokens.size() < 2) {
+				std::cerr << "ERROR: run <executable_path>" << std::endl;
+			}
+			else {
+				std::string execPath;
+				for (size_t i = 1; i < tokens.size(); i++) {
+					if (!execPath.empty())
+						execPath += " ";
+					execPath += tokens[i];
+				}
+				// Remove surrounding quotes if any
+				if ((execPath.front() == '"' && execPath.back() == '"') ||
+					(execPath.front() == '\'' && execPath.back() == '\'')) {
+					execPath = execPath.substr(1, execPath.size() - 2);
+				}
+				std::cout << "Executing: " << execPath << std::endl;
+				HINSTANCE result = ShellExecuteA(NULL, "open", execPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+				if ((int)result <= 32) {
+					std::cerr << "Failed to execute: " << execPath << std::endl;
+				}
+			}
+		}
+		// Handle module-related commands: dwl, load, update/up, delete/del
 		else if (mainCommand == "dwl" || mainCommand == "load" || mainCommand == "update" ||
 			mainCommand == "up" || mainCommand == "delete" || mainCommand == "del") {
 			bool allFlag = false;
 			std::vector<std::string> moduleNames;
-			// Összefűzzük az összes argumentumot (az első után), majd vessző mentén feldaraboljuk
+			// Combine all arguments (after the command) into one string and split by commas
 			std::string argsCombined;
 			for (size_t i = 1; i < tokens.size(); i++) {
 				if (!argsCombined.empty())
@@ -391,21 +476,19 @@ int main() {
 					allFlag = true;
 				}
 				else {
-					// Ha a token nem kapcsoló, akkor modulnév
-					if (mod[0] == '-' && mod != "-all") {
-						// Egyéb kapcsolókat (ha jönne) most nem kezelünk
+					// If the token is a flag (starting with '-') and not "-all", skip for now
+					if (mod[0] == '-' && mod != "-all")
 						continue;
-					}
 					moduleNames.push_back(mod);
 				}
 			}
 			if (mainCommand == "dwl") {
 				if (allFlag) {
-					std::cerr << "Hiba: dwl -all nem támogatott." << std::endl;
+					std::cerr << "Error: dwl -all is not supported." << std::endl;
 				}
 				else {
 					if (moduleNames.empty()) {
-						std::cerr << "ERROR: dwl <modulname>[, modulname...]" << std::endl;
+						std::cerr << "ERROR: dwl <module_name>[, module_name...]" << std::endl;
 					}
 					else {
 						for (const auto& mod : moduleNames) {
@@ -420,7 +503,7 @@ int main() {
 				}
 				else {
 					if (moduleNames.empty()) {
-						std::cerr << "ERROR: load <modulname>[, modulname...]" << std::endl;
+						std::cerr << "ERROR: load <module_name>[, module_name...]" << std::endl;
 					}
 					else {
 						for (const auto& mod : moduleNames) {
@@ -435,7 +518,7 @@ int main() {
 				}
 				else {
 					if (moduleNames.empty()) {
-						std::cerr << "ERROR: update/up <modulname>[, modulname...]" << std::endl;
+						std::cerr << "ERROR: update/up <module_name>[, module_name...]" << std::endl;
 					}
 					else {
 						for (const auto& mod : moduleNames) {
@@ -450,7 +533,7 @@ int main() {
 				}
 				else {
 					if (moduleNames.empty()) {
-						std::cerr << "ERROR: delete/del <modulname>[, modulname...]" << std::endl;
+						std::cerr << "ERROR: delete/del <module_name>[, module_name...]" << std::endl;
 					}
 					else {
 						for (const auto& mod : moduleNames) {
@@ -461,8 +544,8 @@ int main() {
 			}
 		}
 		else {
-			// Ha a parancs nem ismert shell parancs, akkor feltételezzük, hogy modul futtatásáról van szó,
-			// ahol több modul is lehet, vesszővel elválasztva, és kapcsolók (pl. -v) bárhol szerepelhetnek.
+			// Assume it's a module execution command.
+			// Combine the entire command (splitting by commas for arguments and flags)
 			std::string argsCombined;
 			for (size_t i = 0; i < tokens.size(); i++) {
 				if (!argsCombined.empty())
@@ -478,8 +561,6 @@ int main() {
 			}
 			bool versionFlag = false;
 			std::vector<std::string> moduleNames;
-			// Az összes vesszővel elválasztott token közül a "-v", "v" vagy "version" kapcsolók felismerése,
-			// a többi pedig modulnévnek számít.
 			for (const auto& p : parts) {
 				if (p == "-v" || p == "v" || p == "version")
 					versionFlag = true;
@@ -487,12 +568,12 @@ int main() {
 					moduleNames.push_back(p);
 			}
 			if (moduleNames.empty()) {
-				std::cerr << "ERROR: Nem megfelelő modul parancs." << std::endl;
+				std::cerr << "ERROR: Invalid module command." << std::endl;
 			}
 			else {
 				for (const auto& mod : moduleNames) {
 					if (ModuleManager::getInstance().getModules().find(mod) == ModuleManager::getInstance().getModules().end()) {
-						std::cerr << "Hiba: A modul nincs betöltve: " << mod << std::endl;
+						std::cerr << "Error: Module not loaded: " << mod << std::endl;
 					}
 					else {
 						if (versionFlag) {
@@ -501,7 +582,7 @@ int main() {
 								<< std::endl;
 						}
 						else {
-							// Ha extra argumentumokat szeretnénk továbbítani, azt tovább lehet fejleszteni
+							// Execute the module (extra arguments can be handled here)
 							ModuleManager::getInstance().executeModule(mod, {});
 						}
 					}
@@ -511,22 +592,3 @@ int main() {
 	}
 	return 0;
 }
-
-
-/* Extra features and current ones fixes:
-- Add a command which clears the whole mess (delete every earlier command and answers). The command is simply 'c' or 'clear'. 
-- Add a command for reboot. It reload the current state of the shell. Clears every earlier with 'c' then reloads the loaded modules. Could be simply 'rb'
-- When delete a modul, delete the entire filesystem for that module like it was never there. Even the folder of the modul.
-Some things about flags: Flags are only available in some commands. They can be placed anywhere after the first commandword. Like up -v
-The flags are those which have the '-' character before them. Like '-v' is a flag. Multiple flag can be used at the same time for the most cases.
-The '-v' flag doesn't work with other flags. The shell and each module has a version so this only works on them.
-But functions like update or delete have the '-all' flag as a possible one. It means the command needs to be executed on every possible case.
-The ls command lists everything on location (folders, files, etc.)
-The ls command has a flag like attribute: the 'driver:'. By selecting a driver the ls knows which is the driver it should use. It also can be referenced as 'd:'. Like ls drive:C
-There is another attribute for this command: the 'loc:'. It works exactly like the drive attribute but it takes an exact location.
-This needs to be written beteen 's or "s Like ls loc:'C:\Users\kazig\OneDrive\Asztali gép\'
-And yes, this list every files and folders in the place where the location is pointing.
-There is a 'run' command. It runs, execute an executable file like: run "C:\Users\kazig\OneDrive\Asztali gép\kalkulatorv2.exe"
-It does not need the 'loc:' like the ls but it can be added. If it takes a flag, then it's a must to use.
-- Change the messages and everything to English.
-*/
