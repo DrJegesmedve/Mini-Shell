@@ -14,7 +14,7 @@
 #include <shellapi.h> // Needed for ShellExecuteA
 
 #pragma comment(lib, "urlmon.lib")
-namespace fs = std::filesystem;
+namespace fs = std::filesystem
 
 // Helper function to trim whitespace from a string
 std::string trim(const std::string& s) {
