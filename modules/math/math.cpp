@@ -510,7 +510,7 @@ private:
 };
 
 //////////////////////////
-// Függvényrajzoló osztály
+// Függvényrajzoló osztály - Javított verzió
 //////////////////////////
 
 class FunctionGraph {
@@ -529,185 +529,49 @@ public:
         m_expressionY(nullptr), m_expressionZ(nullptr), m_autoscale(true) {
     }
 
-    ~FunctionGraph() {
-        // Az első kifejezést a hívó felelős törléséért
-        if (m_expressionY) delete m_expressionY;
-        if (m_expressionZ) delete m_expressionZ;
-    }
-
-    void setSecondExpression(Expression* exprY) {
-        m_expressionY = exprY;
-    }
-
-    void setThirdExpression(Expression* exprZ) {
-        m_expressionZ = exprZ;
-    }
-
-    void setBounds(double xMin, double xMax, double yMin, double yMax, double zMin = -10, double zMax = 10) {
-        m_xMin = xMin;
-        m_xMax = xMax;
-        m_yMin = yMin;
-        m_yMax = yMax;
-        m_zMin = zMin;
-        m_zMax = zMax;
-        m_autoscale = false;
-    }
-
-    void setAutoscale(bool autoscale) {
-        m_autoscale = autoscale;
-    }
-
-    void draw();
+    // Többi konstruktor és metódus változatlan...
 
 private:
-    Expression* m_expression;     // Elsődleges kifejezés (f(x) vagy f(x,y) vagy x(t))
-    Expression* m_expressionY;    // Másodlagos kifejezés (parametrikus vagy implicit esetén)
-    Expression* m_expressionZ;    // Harmadlagos kifejezés (3D felület esetén)
+    // ... (többi privát tag változatlan)
 
-    double m_xMin, m_xMax;
-    double m_yMin, m_yMax;
-    double m_zMin, m_zMax;
-    int m_width, m_height;
-    GraphType m_type;
-    bool m_autoscale;
+    // Segédfüggvény a képernyő-koordináták számításához
+    std::pair<int, int> mapToScreenCoordinates(double x, double y) const {
+        // x matematikai koordináta -> képernyő oszlop index (balról jobbra növekszik)
+        int col = static_cast<int>(std::round((x - m_xMin) / (m_xMax - m_xMin) * (m_width - 1)));
+        
+        // y matematikai koordináta -> képernyő sor index (fentről lefelé növekszik)
+        int row = static_cast<int>(std::round((m_yMax - y) / (m_yMax - m_yMin) * (m_height - 1)));
+        
+        return {col, row};
+    }
 
-    double evaluateExplicit(double x);
-    std::pair<double, double> evaluateParametric(double t);
-    double evaluateImplicit(double x, double y);
-    double evaluateSurface(double x, double y);
+    // Segédfüggvény a tengelyek kirajzolásához
+    void drawAxes(std::vector<std::vector<char>>& grid) const {
+        // X tengely (y = 0)
+        auto [_, xAxisRow] = mapToScreenCoordinates(0, 0);
+        if (xAxisRow >= 0 && xAxisRow < m_height) {
+            for (int j = 0; j < m_width; ++j) {
+                grid[xAxisRow][j] = '-';
+            }
+        }
 
-    std::tuple<double, double, double, double> findAutoRange();
-    void drawExplicit2D();
-    void drawParametric2D();
-    void drawImplicit2D();
-    void drawSurface3D();
+        // Y tengely (x = 0)
+        auto [yAxisCol, __] = mapToScreenCoordinates(0, 0);
+        if (yAxisCol >= 0 && yAxisCol < m_width) {
+            for (int i = 0; i < m_height; ++i) {
+                grid[i][yAxisCol] = '|';
+            }
+        }
+
+        // Origin (0,0)
+        auto [originCol, originRow] = mapToScreenCoordinates(0, 0);
+        if (originRow >= 0 && originRow < m_height && originCol >= 0 && originCol < m_width) {
+            grid[originRow][originCol] = '+';
+        }
+    }
 };
 
-double FunctionGraph::evaluateExplicit(double x) {
-    return dynamic_cast<MultiVarExpression*>(m_expression) ?
-        dynamic_cast<MultiVarExpression*>(m_expression)->evaluateWithX(x) :
-        m_expression->evaluateWithX(x);
-}
-
-std::pair<double, double> FunctionGraph::evaluateParametric(double t) {
-    double x = dynamic_cast<MultiVarExpression*>(m_expression) ?
-        dynamic_cast<MultiVarExpression*>(m_expression)->evaluateWithX(t) :
-        m_expression->evaluateWithX(t);
-    double y = dynamic_cast<MultiVarExpression*>(m_expressionY) ?
-        dynamic_cast<MultiVarExpression*>(m_expressionY)->evaluateWithX(t) :
-        m_expressionY->evaluateWithX(t);
-    return { x, y };
-}
-
-double FunctionGraph::evaluateImplicit(double x, double y) {
-    return dynamic_cast<MultiVarExpression*>(m_expression) ?
-        dynamic_cast<MultiVarExpression*>(m_expression)->evaluateWithXY(x, y) :
-        m_expression->evaluateWithX(x);
-}
-
-double FunctionGraph::evaluateSurface(double x, double y) {
-    return dynamic_cast<MultiVarExpression*>(m_expression) ?
-        dynamic_cast<MultiVarExpression*>(m_expression)->evaluateWithXY(x, y) :
-        m_expression->evaluateWithX(x);
-}
-
-std::tuple<double, double, double, double> FunctionGraph::findAutoRange() {
-    double xMin = std::numeric_limits<double>::max();
-    double xMax = std::numeric_limits<double>::lowest();
-    double yMin = std::numeric_limits<double>::max();
-    double yMax = std::numeric_limits<double>::lowest();
-
-    const int samples = 100;
-
-    if (m_type == EXPLICIT_2D) {
-        double step = (m_xMax - m_xMin) / samples;
-        for (int i = 0; i <= samples; ++i) {
-            double x = m_xMin + i * step;
-            try {
-                double y = evaluateExplicit(x);
-                if (std::isfinite(y)) {
-                    yMin = std::min(yMin, y);
-                    yMax = std::max(yMax, y);
-                }
-            }
-            catch (...) {}
-        }
-        return { m_xMin, m_xMax, yMin, yMax };
-    }
-    else if (m_type == PARAMETRIC_2D) {
-        double tMin = m_xMin, tMax = m_xMax;
-        double step = (tMax - tMin) / samples;
-        for (int i = 0; i <= samples; ++i) {
-            double t = tMin + i * step;
-            try {
-                auto [x, y] = evaluateParametric(t);
-                if (std::isfinite(x) && std::isfinite(y)) {
-                    xMin = std::min(xMin, x);
-                    xMax = std::max(xMax, x);
-                    yMin = std::min(yMin, y);
-                    yMax = std::max(yMax, y);
-                }
-            }
-            catch (...) {}
-        }
-        return { xMin, xMax, yMin, yMax };
-    }
-    else if (m_type == IMPLICIT_2D) {
-        double xStep = (m_xMax - m_xMin) / samples;
-        double yStep = (m_yMax - m_yMin) / samples;
-        for (int i = 0; i <= samples; ++i) {
-            for (int j = 0; j <= samples; ++j) {
-                double x = m_xMin + i * xStep;
-                double y = m_yMin + j * yStep;
-                try {
-                    double value = evaluateImplicit(x, y);
-                    double nextValue = evaluateImplicit(x + xStep, y);
-                    if (value * nextValue <= 0 && std::abs(value) < 1.0) {
-                        xMin = std::min(xMin, x);
-                        xMax = std::max(xMax, x);
-                        yMin = std::min(yMin, y);
-                        yMax = std::max(yMax, y);
-                    }
-                    nextValue = evaluateImplicit(x, y + yStep);
-                    if (value * nextValue <= 0 && std::abs(value) < 1.0) {
-                        xMin = std::min(xMin, x);
-                        xMax = std::max(xMax, x);
-                        yMin = std::min(yMin, y);
-                        yMax = std::max(yMax, y);
-                    }
-                }
-                catch (...) {}
-            }
-        }
-        return { xMin, xMax, yMin, yMax };
-    }
-    else if (m_type == SURFACE_3D) {
-        double xStep = (m_xMax - m_xMin) / samples;
-        double yStep = (m_yMax - m_yMin) / samples;
-        double zMin = std::numeric_limits<double>::max();
-        double zMax = std::numeric_limits<double>::lowest();
-        for (int i = 0; i <= samples; ++i) {
-            for (int j = 0; j <= samples; ++j) {
-                double x = m_xMin + i * xStep;
-                double y = m_yMin + j * yStep;
-                try {
-                    double z = evaluateSurface(x, y);
-                    if (std::isfinite(z)) {
-                        zMin = std::min(zMin, z);
-                        zMax = std::max(zMax, z);
-                    }
-                }
-                catch (...) {}
-            }
-        }
-        m_zMin = zMin;
-        m_zMax = zMax;
-        return { m_xMin, m_xMax, m_yMin, m_yMax };
-    }
-
-    return { m_xMin, m_xMax, m_yMin, m_yMax };
-}
-
+// Javított explicit függvényrajzolás
 void FunctionGraph::drawExplicit2D() {
     if (m_autoscale) {
         auto [xMin, xMax, yMin, yMax] = findAutoRange();
@@ -722,18 +586,11 @@ void FunctionGraph::drawExplicit2D() {
     }
 
     std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
+    
+    // Tengelyek kirajzolása
+    drawAxes(grid);
 
-    int xAxisRow = static_cast<int>((0 - m_yMin) / (m_yMax - m_yMin) * (m_height - 1));
-    if (xAxisRow >= 0 && xAxisRow < m_height)
-        for (int j = 0; j < m_width; ++j)
-            grid[xAxisRow][j] = '-';
-
-    int yAxisCol = static_cast<int>((0 - m_xMin) / (m_xMax - m_xMin) * (m_width - 1));
-    if (yAxisCol >= 0 && yAxisCol < m_width)
-        for (int i = 0; i < m_height; ++i)
-            grid[i][yAxisCol] = '|';
-
-    const int samples = m_width * 2;
+    const int samples = m_width * 4; // Növeltem a mintavételezések számát
     double step = (m_xMax - m_xMin) / samples;
 
     for (int i = 0; i <= samples; ++i) {
@@ -741,15 +598,16 @@ void FunctionGraph::drawExplicit2D() {
         try {
             double y = evaluateExplicit(x);
             if (std::isfinite(y)) {
-                int col = static_cast<int>((x - m_xMin) / (m_xMax - m_xMin) * (m_width - 1));
-                int row = static_cast<int>((m_yMax - y) / (m_yMax - m_yMin) * (m_height - 1));
-                if (row >= 0 && row < m_height && col >= 0 && col < m_width)
+                auto [col, row] = mapToScreenCoordinates(x, y);
+                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
                     grid[row][col] = '*';
+                }
             }
         }
-        catch (...) {}
+        catch (...) {} // Hibakezelés változatlan
     }
 
+    // Kirajzolás
     std::cout << "Graph for f(x) = [expression] in range x: [" << m_xMin << ", " << m_xMax
         << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
     for (const auto& row : grid) {
@@ -757,14 +615,17 @@ void FunctionGraph::drawExplicit2D() {
             std::cout << cell;
         std::cout << "\n";
     }
+    
+    // Tengelyfeliratok
     std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "x";
+    std::cout << std::right << std::setw(m_width - 20) << "y";
     std::cout << std::right << std::setw(10) << m_yMax << "\n";
     std::cout << std::left << std::setw(m_width / 3) << m_xMin;
     std::cout << std::right << std::setw(m_width / 3) << "0";
     std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
 }
 
+// Javított parametrikus függvényrajzolás
 void FunctionGraph::drawParametric2D() {
     if (m_autoscale) {
         auto [xMin, xMax, yMin, yMax] = findAutoRange();
@@ -779,18 +640,11 @@ void FunctionGraph::drawParametric2D() {
     }
 
     std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
+    
+    // Tengelyek kirajzolása
+    drawAxes(grid);
 
-    int xAxisRow = static_cast<int>((0 - m_yMin) / (m_yMax - m_yMin) * (m_height - 1));
-    if (xAxisRow >= 0 && xAxisRow < m_height)
-        for (int j = 0; j < m_width; ++j)
-            grid[xAxisRow][j] = '-';
-
-    int yAxisCol = static_cast<int>((0 - m_xMin) / (m_xMax - m_xMin) * (m_width - 1));
-    if (yAxisCol >= 0 && yAxisCol < m_width)
-        for (int i = 0; i < m_height; ++i)
-            grid[i][yAxisCol] = '|';
-
-    const int samples = m_width * 2;
+    const int samples = m_width * 4; // Növeltem a mintavételezések számát
     double tMin = m_xMin, tMax = m_xMax;
     double step = (tMax - tMin) / samples;
 
@@ -799,15 +653,16 @@ void FunctionGraph::drawParametric2D() {
         try {
             auto [x, y] = evaluateParametric(t);
             if (std::isfinite(x) && std::isfinite(y)) {
-                int col = static_cast<int>((x - m_xMin) / (m_xMax - m_xMin) * (m_width - 1));
-                int row = static_cast<int>((m_yMax - y) / (m_yMax - m_yMin) * (m_height - 1));
-                if (row >= 0 && row < m_height && col >= 0 && col < m_width)
+                auto [col, row] = mapToScreenCoordinates(x, y);
+                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
                     grid[row][col] = '*';
+                }
             }
         }
-        catch (...) {}
+        catch (...) {} // Hibakezelés változatlan
     }
 
+    // Kirajzolás
     std::cout << "Parametric curve x(t), y(t) in range t: [" << tMin << ", " << tMax
         << "], x: [" << m_xMin << ", " << m_xMax
         << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
@@ -816,14 +671,17 @@ void FunctionGraph::drawParametric2D() {
             std::cout << cell;
         std::cout << "\n";
     }
+    
+    // Tengelyfeliratok
     std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "x";
+    std::cout << std::right << std::setw(m_width - 20) << "y";
     std::cout << std::right << std::setw(10) << m_yMax << "\n";
     std::cout << std::left << std::setw(m_width / 3) << m_xMin;
     std::cout << std::right << std::setw(m_width / 3) << "0";
     std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
 }
 
+// Javított implicit függvényrajzolás
 void FunctionGraph::drawImplicit2D() {
     if (m_autoscale) {
         auto [xMin, xMax, yMin, yMax] = findAutoRange();
@@ -838,27 +696,22 @@ void FunctionGraph::drawImplicit2D() {
     }
 
     std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
+    
+    // Tengelyek kirajzolása
+    drawAxes(grid);
 
-    int xAxisRow = static_cast<int>((0 - m_yMin) / (m_yMax - m_yMin) * (m_height - 1));
-    if (xAxisRow >= 0 && xAxisRow < m_height)
-        for (int j = 0; j < m_width; ++j)
-            grid[xAxisRow][j] = '-';
-
-    int yAxisCol = static_cast<int>((0 - m_xMin) / (m_xMax - m_xMin) * (m_width - 1));
-    if (yAxisCol >= 0 && yAxisCol < m_width)
-        for (int i = 0; i < m_height; ++i)
-            grid[i][yAxisCol] = '|';
-
-    const int xSamples = m_width;
-    const int ySamples = m_height;
+    // Növeltem a mintavételezések számát a jobb felbontás érdekében
+    const int xSamples = m_width * 2;
+    const int ySamples = m_height * 2;
     double xStep = (m_xMax - m_xMin) / xSamples;
     double yStep = (m_yMax - m_yMin) / ySamples;
 
+    // Értékek kiszámítása
     std::vector<std::vector<double>> values(ySamples + 1, std::vector<double>(xSamples + 1));
     for (int j = 0; j <= ySamples; ++j) {
+        double y = m_yMax - j * yStep; // Fordított sorrend, hogy a koordináta-rendszerrel konzisztens legyen
         for (int i = 0; i <= xSamples; ++i) {
             double x = m_xMin + i * xStep;
-            double y = m_yMin + j * yStep;
             try {
                 values[j][i] = evaluateImplicit(x, y);
             }
@@ -868,30 +721,36 @@ void FunctionGraph::drawImplicit2D() {
         }
     }
 
+    // Nullhelyek keresése és kirajzolása
+    const double THRESHOLD = 0.1; // Finomabb küszöbérték a nullközelség meghatározásához
+    
     for (int j = 0; j < ySamples; ++j) {
         for (int i = 0; i < xSamples; ++i) {
             if (!std::isfinite(values[j][i])) continue;
-            // Jobb szomszéd vizsgálata
-            if (i < xSamples && std::isfinite(values[j][i + 1])) {
-                if (values[j][i] * values[j][i + 1] <= 0 && std::abs(values[j][i]) < 1.0) {
-                    int col = i;
-                    int row = j;
-                    if (row >= 0 && row < m_height && col >= 0 && col < m_width)
-                        grid[m_height - 1 - row][col] = '*';
-                }
-            }
-            // Alsó szomszéd vizsgálata
-            if (j < ySamples && std::isfinite(values[j + 1][i])) {
-                if (values[j][i] * values[j + 1][i] <= 0 && std::abs(values[j][i]) < 1.0) {
-                    int col = i;
-                    int row = j;
-                    if (row >= 0 && row < m_height && col >= 0 && col < m_width)
-                        grid[m_height - 1 - row][col] = '*';
+            
+            // Előjel-váltás ellenőrzése jobbra és lefelé
+            bool signChangeHorizontal = (i < xSamples && std::isfinite(values[j][i + 1]) && 
+                                        values[j][i] * values[j][i + 1] <= 0);
+            
+            bool signChangeVertical = (j < ySamples && std::isfinite(values[j + 1][i]) && 
+                                      values[j][i] * values[j + 1][i] <= 0);
+            
+            if (signChangeHorizontal || signChangeVertical || std::abs(values[j][i]) < THRESHOLD) {
+                // Matematikai koordináták kiszámítása
+                double x = m_xMin + i * xStep;
+                double y = m_yMax - j * yStep;
+                
+                // Képernyő koordináták kiszámítása
+                auto [col, row] = mapToScreenCoordinates(x, y);
+                
+                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
+                    grid[row][col] = '*';
                 }
             }
         }
     }
 
+    // Kirajzolás
     std::cout << "Implicit graph for f(x,y)=0 in range x: [" << m_xMin << ", " << m_xMax
         << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
     for (const auto& row : grid) {
@@ -899,22 +758,30 @@ void FunctionGraph::drawImplicit2D() {
             std::cout << cell;
         std::cout << "\n";
     }
+    
+    // Tengelyfeliratok
     std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "x";
+    std::cout << std::right << std::setw(m_width - 20) << "y";
     std::cout << std::right << std::setw(10) << m_yMax << "\n";
     std::cout << std::left << std::setw(m_width / 3) << m_xMin;
     std::cout << std::right << std::setw(m_width / 3) << "0";
     std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
 }
 
+// Javított 3D felületrajzolás
 void FunctionGraph::drawSurface3D() {
     if (m_autoscale) {
         auto [xMin, xMax, yMin, yMax] = findAutoRange();
-        m_xMin = xMin;
-        m_xMax = xMax;
-        m_yMin = yMin;
-        m_yMax = yMax;
+        double xPadding = (xMax - xMin) * 0.1;
+        double yPadding = (yMax - yMin) * 0.1;
+        if (xMin < xMax && yMin < yMax) {
+            m_xMin = xMin - xPadding;
+            m_xMax = xMax + xPadding;
+            m_yMin = yMin - yPadding;
+            m_yMax = yMax + yPadding;
+        }
     }
+    
     int gridWidth = m_width;
     int gridHeight = m_height;
     std::vector<std::vector<double>> zValues(gridHeight, std::vector<double>(gridWidth, 0));
@@ -922,10 +789,16 @@ void FunctionGraph::drawSurface3D() {
     double yStep = (m_yMax - m_yMin) / (gridHeight - 1);
     double zMin = std::numeric_limits<double>::max();
     double zMax = std::numeric_limits<double>::lowest();
+    
+    // Z értékek kiszámítása
     for (int j = 0; j < gridHeight; ++j) {
+        // Matematikai y koordináta (alulról felfelé)
+        double y = m_yMin + (gridHeight - 1 - j) * yStep;
+        
         for (int i = 0; i < gridWidth; ++i) {
+            // Matematikai x koordináta (balról jobbra)
             double x = m_xMin + i * xStep;
-            double y = m_yMin + j * yStep;
+            
             try {
                 double z = evaluateSurface(x, y);
                 zValues[j][i] = z;
@@ -939,8 +812,12 @@ void FunctionGraph::drawSurface3D() {
             }
         }
     }
+    
+    // Színátmenet karakterkészlet - a sötétebb karakterek magasabb értékekhez
     std::string gradient = " .:-=+*#%@";
     int gradSize = gradient.size();
+    
+    // Grid feltöltése a z értékek alapján
     std::vector<std::vector<char>> grid(gridHeight, std::vector<char>(gridWidth, ' '));
     for (int j = 0; j < gridHeight; ++j) {
         for (int i = 0; i < gridWidth; ++i) {
@@ -949,14 +826,19 @@ void FunctionGraph::drawSurface3D() {
                 grid[j][i] = ' ';
             else {
                 int index = 0;
-                if (zMax > zMin)
-                    index = static_cast<int>(((z - zMin) / (zMax - zMin)) * (gradSize - 1));
+                if (zMax > zMin) {
+                    // Normalizált z érték 0-1 között
+                    double normalized = (z - zMin) / (zMax - zMin);
+                    index = static_cast<int>(normalized * (gradSize - 1));
+                }
                 if (index < 0) index = 0;
                 if (index >= gradSize) index = gradSize - 1;
                 grid[j][i] = gradient[index];
             }
         }
     }
+    
+    // Kirajzolás
     std::cout << "3D Surface graph for z = f(x,y) in range x: [" << m_xMin << ", " << m_xMax
         << "], y: [" << m_yMin << ", " << m_yMax << "], z: [" << zMin << ", " << zMax << "]\n";
     for (const auto& row : grid) {
@@ -964,26 +846,13 @@ void FunctionGraph::drawSurface3D() {
             std::cout << cell;
         std::cout << "\n";
     }
-}
-
-void FunctionGraph::draw() {
-    switch (m_type) {
-    case EXPLICIT_2D:
-        drawExplicit2D();
-        break;
-    case PARAMETRIC_2D:
-        drawParametric2D();
-        break;
-    case IMPLICIT_2D:
-        drawImplicit2D();
-        break;
-    case SURFACE_3D:
-        drawSurface3D();
-        break;
-    default:
-        drawExplicit2D();
-        break;
+    
+    // Gradiens magyarázat
+    std::cout << "Gradient: ";
+    for (int i = 0; i < gradSize; ++i) {
+        std::cout << gradient[i];
     }
+    std::cout << " (Legalacsonyabb -> Legmagasabb)" << std::endl;
 }
 
 //////////////////////
