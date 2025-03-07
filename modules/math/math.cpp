@@ -12,32 +12,34 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
-#include "math.h"  // A modul interfészét tartalmazza (például a Module osztálydefinícióját)
+#include "math.h" // Contains the Module interface (e.g. Module class definition)
 
-//////////////////////////
-// Kifejezés osztályok  //
-//////////////////////////
+//------------------------------------------------------------
+// Expression Classes
+//------------------------------------------------------------
 
-// Absztrakt kifejezés
+// Base Expression – now includes evaluateWithXY and evaluateWithXYZ
 class Expression {
 public:
     virtual ~Expression() {}
     virtual double evaluate() = 0;
     virtual double evaluateWithX(double x) { return evaluate(); }
+    virtual double evaluateWithXY(double x, double y) { return evaluate(); }
+    virtual double evaluateWithXYZ(double x, double y, double z) { return evaluate(); }
 };
 
-// Többváltozós kifejezés (grafikhoz)
+// Multivariable expression (for graphing)
 class MultiVarExpression : public Expression {
 public:
     MultiVarExpression() {}
     virtual ~MultiVarExpression() {}
-    double evaluate() override { return 0; } // Alapértelmezett érték
+    double evaluate() override { return 0; } // Default
     virtual double evaluateWithX(double x) override { return evaluateWithXY(x, 0); }
     virtual double evaluateWithXY(double x, double y) { return 0; }
     virtual double evaluateWithXYZ(double x, double y, double z) { return 0; }
 };
 
-// Változók
+// Variable expressions
 class VariableXExpression : public MultiVarExpression {
 public:
     double evaluateWithX(double x) override { return x; }
@@ -64,10 +66,10 @@ public:
 class ParameterTExpression : public MultiVarExpression {
 public:
     double evaluateWithX(double t) override { return t; }
-    double evaluateWithXY(double x, double y) override { return x; } // itt x értelmezhető mint a paraméter
+    double evaluateWithXY(double x, double y) override { return x; } // Here x is treated as the parameter
 };
 
-// Számok
+// Number
 class NumberExpression : public MultiVarExpression {
 public:
     NumberExpression(double value) : m_value(value) {}
@@ -79,14 +81,16 @@ private:
     double m_value;
 };
 
-///////////////////////////////
-// Bináris és unáris műveletek //
-///////////////////////////////
+//------------------------------------------------------------
+// Binary and Unary Operations
+//------------------------------------------------------------
 
-// Bináris kifejezés többváltozós környezetben
+// Binary expression in a multivariable context
 class BinaryExpression : public MultiVarExpression {
 public:
-    BinaryExpression(Expression* left, Expression* right) : m_left(left), m_right(right) {}
+    BinaryExpression(Expression* left, Expression* right)
+        : m_left(left), m_right(right) {
+    }
     virtual ~BinaryExpression() {
         delete m_left;
         delete m_right;
@@ -127,7 +131,7 @@ protected:
     Expression* m_right;
 };
 
-// Unáris kifejezés többváltozós környezetben
+// Unary expression in a multivariable context
 class UnaryExpression : public MultiVarExpression {
 public:
     UnaryExpression(Expression* operand) : m_operand(operand) {}
@@ -158,50 +162,59 @@ protected:
     Expression* m_operand;
 };
 
-// Összeadás
+// Addition
 class AddExpression : public BinaryExpression {
 public:
-    AddExpression(Expression* left, Expression* right) : BinaryExpression(left, right) {}
+    AddExpression(Expression* left, Expression* right)
+        : BinaryExpression(left, right) {
+    }
 protected:
     double evaluateOperation(double left, double right) override { return left + right; }
 };
 
-// Kivonás
+// Subtraction
 class SubtractExpression : public BinaryExpression {
 public:
-    SubtractExpression(Expression* left, Expression* right) : BinaryExpression(left, right) {}
+    SubtractExpression(Expression* left, Expression* right)
+        : BinaryExpression(left, right) {
+    }
 protected:
     double evaluateOperation(double left, double right) override { return left - right; }
 };
 
-// Szorzás
+// Multiplication
 class MultiplyExpression : public BinaryExpression {
 public:
-    MultiplyExpression(Expression* left, Expression* right) : BinaryExpression(left, right) {}
+    MultiplyExpression(Expression* left, Expression* right)
+        : BinaryExpression(left, right) {
+    }
 protected:
     double evaluateOperation(double left, double right) override { return left * right; }
 };
 
-// Osztás
+// Division
 class DivideExpression : public BinaryExpression {
 public:
-    DivideExpression(Expression* left, Expression* right) : BinaryExpression(left, right) {}
+    DivideExpression(Expression* left, Expression* right)
+        : BinaryExpression(left, right) {
+    }
 protected:
     double evaluateOperation(double left, double right) override { return left / right; }
 };
 
-// Hatványozás
+// Power
 class PowerExpression : public BinaryExpression {
 public:
-    PowerExpression(Expression* left, Expression* right) : BinaryExpression(left, right) {}
+    PowerExpression(Expression* left, Expression* right)
+        : BinaryExpression(left, right) {
+    }
 protected:
     double evaluateOperation(double left, double right) override { return std::pow(left, right); }
 };
 
-/////////////////////
-// Unáris függvények
-/////////////////////
-
+//------------------------------------------------------------
+// Unary Functions
+//------------------------------------------------------------
 class SqrtExpression : public UnaryExpression {
 public:
     SqrtExpression(Expression* operand) : UnaryExpression(operand) {}
@@ -225,7 +238,9 @@ protected:
 
 class LogBaseExpression : public UnaryExpression {
 public:
-    LogBaseExpression(Expression* operand, double base) : UnaryExpression(operand), m_base(base) {}
+    LogBaseExpression(Expression* operand, double base)
+        : UnaryExpression(operand), m_base(base) {
+    }
 protected:
     double evaluateOperation(double value) override { return std::log(value) / std::log(m_base); }
 private:
@@ -288,10 +303,19 @@ protected:
     double evaluateOperation(double value) override { return M_PI / 2.0 - std::atan(value); }
 };
 
-//////////////////////////////
-// ExpressionParser (egyesített)
-//////////////////////////////
+//------------------------------------------------------------
+// NEW: Absolute Value Expression
+//------------------------------------------------------------
+class AbsExpression : public UnaryExpression {
+public:
+    AbsExpression(Expression* operand) : UnaryExpression(operand) {}
+protected:
+    double evaluateOperation(double value) override { return std::fabs(value); }
+};
 
+//------------------------------------------------------------
+// Expression Parser
+//------------------------------------------------------------
 class ExpressionParser {
 public:
     ExpressionParser(const std::string& expression)
@@ -308,7 +332,6 @@ public:
         return expr;
     }
 
-    bool hasVariable() const { return m_hasX || m_hasY || m_hasZ || m_hasT; }
     bool hasX() const { return m_hasX; }
     bool hasY() const { return m_hasY; }
     bool hasZ() const { return m_hasZ; }
@@ -333,9 +356,7 @@ private:
     void advance() { if (!isEnd()) m_pos++; }
     char peek() const { return (m_pos + 1 < m_expression.size()) ? m_expression[m_pos + 1] : '\0'; }
 
-    Expression* parseExpression() {
-        return parseAddSub();
-    }
+    Expression* parseExpression() { return parseAddSub(); }
 
     Expression* parseAddSub() {
         Expression* left = parseMulDiv();
@@ -382,11 +403,21 @@ private:
     }
 
     Expression* parseFactor() {
-        // Szám
+        // Absolute value: |expression|
+        if (current() == '|') {
+            advance();
+            Expression* expr = parseExpression();
+            if (!expr || current() != '|') { delete expr; return nullptr; }
+            advance();
+            return new AbsExpression(expr);
+        }
+
+        // Number
         if (std::isdigit(current()) || (current() == '.' && std::isdigit(peek()))) {
             return parseNumber();
         }
-        // Állandók
+
+        // Constants
         if (current() == 'e' && (isEnd() || !std::isalnum(peek()))) {
             advance();
             return new NumberExpression(std::exp(1.0));
@@ -395,7 +426,8 @@ private:
             m_pos += 4;
             return new NumberExpression(M_PI);
         }
-        // Változók: x, y, z, t
+
+        // Variables: x, y, z, t
         if (current() == 'x' && (isEnd() || !std::isalnum(peek()))) {
             advance();
             m_hasX = true;
@@ -416,7 +448,8 @@ private:
             m_hasT = true;
             return new ParameterTExpression();
         }
-        // Zárójelek
+
+        // Parentheses
         if (current() == '(') {
             advance();
             Expression* expr = parseExpression();
@@ -424,15 +457,15 @@ private:
             advance();
             return expr;
         }
-        // Függvények
+
+        // Functions
         if (std::isalpha(current())) {
             std::string func;
-            size_t start = m_pos;
             while (!isEnd() && (std::isalnum(current()) || current() == '_')) {
                 func.push_back(current());
                 advance();
             }
-            // Különleges eset: "V" = gyök (sqrt)
+            // Special case: "V" for square root (sqrt)
             if (func == "V") {
                 if (current() == '(') {
                     advance();
@@ -443,7 +476,7 @@ private:
                 }
                 return nullptr;
             }
-            // Logaritmus adott alappal: pl. log2(8)
+            // Logarithm with given base, e.g. log2(x)
             if (func.size() > 3 && func.substr(0, 3) == "log") {
                 try {
                     double base = std::stod(func.substr(3));
@@ -456,10 +489,10 @@ private:
                     }
                 }
                 catch (const std::invalid_argument&) {
-                    // nem sikerült, továbblépünk
+                    // Failed conversion, continue.
                 }
             }
-            // Egyéb függvények, ha '(' következik
+            // Other functions if followed by '('
             if (current() == '(') {
                 advance();
                 Expression* arg = parseExpression();
@@ -492,476 +525,229 @@ private:
             if (current() == '.') hasDecimal = true;
             advance();
         }
-        if (!isEnd() && (current() == 'e' || current() == 'E')) {
-            advance();
-            if (current() == '+' || current() == '-') advance();
-            while (!isEnd() && std::isdigit(current())) {
-                advance();
-            }
-        }
-        try {
-            double value = std::stod(m_expression.substr(start, m_pos - start));
-            return new NumberExpression(value);
-        }
-        catch (const std::invalid_argument&) {
-            return nullptr;
-        }
+        double value = std::stod(m_expression.substr(start, m_pos - start));
+        return new NumberExpression(value);
     }
 };
 
-//////////////////////////
-// Függvényrajzoló osztály - Javított verzió
-//////////////////////////
+//------------------------------------------------------------
+// Graph Drawing
+//------------------------------------------------------------
 
-class FunctionGraph {
-public:
-    enum GraphType {
-        EXPLICIT_2D,    // y = f(x)
-        PARAMETRIC_2D,  // x = f(t), y = g(t)
-        IMPLICIT_2D,    // f(x,y) = 0
-        SURFACE_3D      // z = f(x,y)
-    };
+// 1D graph for functions of x only, with automatic y-range adjustment.
+void drawGraph1D(Expression* expr) {
+    double xMin = -10.0;
+    double xMax = 10.0;
+    const int width = 80;
+    const int height = 25;
 
-    FunctionGraph(Expression* expr, double xMin = -10, double xMax = 10,
-        int width = 60, int height = 20, GraphType type = EXPLICIT_2D)
-        : m_expression(expr), m_xMin(xMin), m_xMax(xMax), m_width(width), m_height(height),
-        m_yMin(-10), m_yMax(10), m_zMin(-10), m_zMax(10), m_type(type),
-        m_expressionY(nullptr), m_expressionZ(nullptr), m_autoscale(true) {
+    std::vector<std::string> grid(height, std::string(width, ' '));
+
+    double yMin = std::numeric_limits<double>::max();
+    double yMax = std::numeric_limits<double>::lowest();
+    for (int i = 0; i < width; i++) {
+        double x = xMin + i * (xMax - xMin) / (width - 1);
+        double y = expr->evaluateWithX(x);
+        yMin = std::min(yMin, y);
+        yMax = std::max(yMax, y);
     }
+    if (yMin == yMax) { yMin -= 1; yMax += 1; }
 
-    // Többi konstruktor és metódus változatlan...
-
-private:
-    // ... (többi privát tag változatlan)
-
-    // Segédfüggvény a képernyő-koordináták számításához
-    std::pair<int, int> mapToScreenCoordinates(double x, double y) const {
-        // x matematikai koordináta -> képernyő oszlop index (balról jobbra növekszik)
-        int col = static_cast<int>(std::round((x - m_xMin) / (m_xMax - m_xMin) * (m_width - 1)));
-        
-        // y matematikai koordináta -> képernyő sor index (fentről lefelé növekszik)
-        int row = static_cast<int>(std::round((m_yMax - y) / (m_yMax - m_yMin) * (m_height - 1)));
-        
-        return {col, row};
-    }
-
-    // Segédfüggvény a tengelyek kirajzolásához
-    void drawAxes(std::vector<std::vector<char>>& grid) const {
-        // X tengely (y = 0)
-        auto [_, xAxisRow] = mapToScreenCoordinates(0, 0);
-        if (xAxisRow >= 0 && xAxisRow < m_height) {
-            for (int j = 0; j < m_width; ++j) {
-                grid[xAxisRow][j] = '-';
-            }
+    for (int i = 0; i < width; i++) {
+        double x = xMin + i * (xMax - xMin) / (width - 1);
+        double y = expr->evaluateWithX(x);
+        int row = static_cast<int>((y - yMin) / (yMax - yMin) * (height - 1));
+        row = height - 1 - row;
+        if (row >= 0 && row < height) {
+            grid[row][i] = '*';
         }
-
-        // Y tengely (x = 0)
-        auto [yAxisCol, __] = mapToScreenCoordinates(0, 0);
-        if (yAxisCol >= 0 && yAxisCol < m_width) {
-            for (int i = 0; i < m_height; ++i) {
+    }
+    // Draw x-axis if 0 in range.
+    if (yMin <= 0 && yMax >= 0) {
+        int xAxisRow = height - 1 - static_cast<int>((0 - yMin) / (yMax - yMin) * (height - 1));
+        for (int i = 0; i < width; i++) {
+            if (grid[xAxisRow][i] == ' ')
+                grid[xAxisRow][i] = '-';
+        }
+    }
+    // Draw y-axis if 0 in range.
+    if (xMin <= 0 && xMax >= 0) {
+        int yAxisCol = static_cast<int>((0 - xMin) / (xMax - xMin) * (width - 1));
+        for (int i = 0; i < height; i++) {
+            if (grid[i][yAxisCol] == ' ')
                 grid[i][yAxisCol] = '|';
-            }
-        }
-
-        // Origin (0,0)
-        auto [originCol, originRow] = mapToScreenCoordinates(0, 0);
-        if (originRow >= 0 && originRow < m_height && originCol >= 0 && originCol < m_width) {
-            grid[originRow][originCol] = '+';
         }
     }
-};
-
-// Javított explicit függvényrajzolás
-void FunctionGraph::drawExplicit2D() {
-    if (m_autoscale) {
-        auto [xMin, xMax, yMin, yMax] = findAutoRange();
-        double xPadding = (xMax - xMin) * 0.1;
-        double yPadding = (yMax - yMin) * 0.1;
-        if (xMin < xMax && yMin < yMax) {
-            m_xMin = xMin - xPadding;
-            m_xMax = xMax + xPadding;
-            m_yMin = yMin - yPadding;
-            m_yMax = yMax + yPadding;
-        }
-    }
-
-    std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
-    
-    // Tengelyek kirajzolása
-    drawAxes(grid);
-
-    const int samples = m_width * 4; // Növeltem a mintavételezések számát
-    double step = (m_xMax - m_xMin) / samples;
-
-    for (int i = 0; i <= samples; ++i) {
-        double x = m_xMin + i * step;
-        try {
-            double y = evaluateExplicit(x);
-            if (std::isfinite(y)) {
-                auto [col, row] = mapToScreenCoordinates(x, y);
-                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
-                    grid[row][col] = '*';
-                }
-            }
-        }
-        catch (...) {} // Hibakezelés változatlan
-    }
-
-    // Kirajzolás
-    std::cout << "Graph for f(x) = [expression] in range x: [" << m_xMin << ", " << m_xMax
-        << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
-    for (const auto& row : grid) {
-        for (char cell : row)
-            std::cout << cell;
-        std::cout << "\n";
-    }
-    
-    // Tengelyfeliratok
-    std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "y";
-    std::cout << std::right << std::setw(10) << m_yMax << "\n";
-    std::cout << std::left << std::setw(m_width / 3) << m_xMin;
-    std::cout << std::right << std::setw(m_width / 3) << "0";
-    std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
+    for (const auto& line : grid)
+        std::cout << line << std::endl;
 }
 
-// Javított parametrikus függvényrajzolás
-void FunctionGraph::drawParametric2D() {
-    if (m_autoscale) {
-        auto [xMin, xMax, yMin, yMax] = findAutoRange();
-        double xPadding = (xMax - xMin) * 0.1;
-        double yPadding = (yMax - yMin) * 0.1;
-        if (xMin < xMax && yMin < yMax) {
-            m_xMin = xMin - xPadding;
-            m_xMax = xMax + xPadding;
-            m_yMin = yMin - yPadding;
-            m_yMax = yMax + yPadding;
-        }
-    }
+// Implicit function graph for functions of x and y (f(x,y)=0)
+void drawGraphImplicit2D(Expression* expr) {
+    double xMin = -10.0, xMax = 10.0;
+    double yMin = -10.0, yMax = 10.0;
+    const int width = 80, height = 25;
+    std::vector<std::string> grid(height, std::string(width, ' '));
 
-    std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
-    
-    // Tengelyek kirajzolása
-    drawAxes(grid);
-
-    const int samples = m_width * 4; // Növeltem a mintavételezések számát
-    double tMin = m_xMin, tMax = m_xMax;
-    double step = (tMax - tMin) / samples;
-
-    for (int i = 0; i <= samples; ++i) {
-        double t = tMin + i * step;
-        try {
-            auto [x, y] = evaluateParametric(t);
-            if (std::isfinite(x) && std::isfinite(y)) {
-                auto [col, row] = mapToScreenCoordinates(x, y);
-                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
-                    grid[row][col] = '*';
-                }
+    const double threshold = 0.5; // threshold for considering f(x,y) near zero
+    for (int i = 0; i < width; i++) {
+        double x = xMin + i * (xMax - xMin) / (width - 1);
+        for (int j = 0; j < height; j++) {
+            double y = yMax - j * (yMax - yMin) / (height - 1);
+            double val = expr->evaluateWithXY(x, y);
+            if (std::fabs(val) < threshold) {
+                grid[j][i] = '*';
             }
         }
-        catch (...) {} // Hibakezelés változatlan
     }
-
-    // Kirajzolás
-    std::cout << "Parametric curve x(t), y(t) in range t: [" << tMin << ", " << tMax
-        << "], x: [" << m_xMin << ", " << m_xMax
-        << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
-    for (const auto& row : grid) {
-        for (char cell : row)
-            std::cout << cell;
-        std::cout << "\n";
+    // Draw x-axis
+    if (yMin <= 0 && yMax >= 0) {
+        int xAxisRow = static_cast<int>((yMax - 0) / (yMax - yMin) * (height - 1));
+        for (int i = 0; i < width; i++) {
+            if (grid[xAxisRow][i] == ' ')
+                grid[xAxisRow][i] = '-';
+        }
     }
-    
-    // Tengelyfeliratok
-    std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "y";
-    std::cout << std::right << std::setw(10) << m_yMax << "\n";
-    std::cout << std::left << std::setw(m_width / 3) << m_xMin;
-    std::cout << std::right << std::setw(m_width / 3) << "0";
-    std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
+    // Draw y-axis
+    if (xMin <= 0 && xMax >= 0) {
+        int yAxisCol = static_cast<int>((0 - xMin) / (xMax - xMin) * (width - 1));
+        for (int j = 0; j < height; j++) {
+            if (grid[j][yAxisCol] == ' ')
+                grid[j][yAxisCol] = '|';
+        }
+    }
+    for (const auto& line : grid)
+        std::cout << line << std::endl;
 }
 
-// Javított implicit függvényrajzolás
-void FunctionGraph::drawImplicit2D() {
-    if (m_autoscale) {
-        auto [xMin, xMax, yMin, yMax] = findAutoRange();
-        double xPadding = (xMax - xMin) * 0.1;
-        double yPadding = (yMax - yMin) * 0.1;
-        if (xMin < xMax && yMin < yMax) {
-            m_xMin = xMin - xPadding;
-            m_xMax = xMax + xPadding;
-            m_yMin = yMin - yPadding;
-            m_yMax = yMax + yPadding;
-        }
-    }
+// Basic 3D graph projection using isometric projection.
+void drawGraph3D(Expression* expr) {
+    std::cout << "3D graphing: Basic 3D projection (not fully implemented)." << std::endl;
+    const int width = 80, height = 25;
+    std::vector<std::string> grid(height, std::string(width, ' '));
+    double xMin = -5, xMax = 5, yMin = -5, yMax = 5, zMin = -5, zMax = 5;
 
-    std::vector<std::vector<char>> grid(m_height, std::vector<char>(m_width, ' '));
-    
-    // Tengelyek kirajzolása
-    drawAxes(grid);
-
-    // Növeltem a mintavételezések számát a jobb felbontás érdekében
-    const int xSamples = m_width * 2;
-    const int ySamples = m_height * 2;
-    double xStep = (m_xMax - m_xMin) / xSamples;
-    double yStep = (m_yMax - m_yMin) / ySamples;
-
-    // Értékek kiszámítása
-    std::vector<std::vector<double>> values(ySamples + 1, std::vector<double>(xSamples + 1));
-    for (int j = 0; j <= ySamples; ++j) {
-        double y = m_yMax - j * yStep; // Fordított sorrend, hogy a koordináta-rendszerrel konzisztens legyen
-        for (int i = 0; i <= xSamples; ++i) {
-            double x = m_xMin + i * xStep;
-            try {
-                values[j][i] = evaluateImplicit(x, y);
-            }
-            catch (...) {
-                values[j][i] = std::numeric_limits<double>::quiet_NaN();
+    const double threshold = 0.5;
+    for (int i = 0; i < width; i++) {
+        double x = xMin + i * (xMax - xMin) / (width - 1);
+        for (int j = 0; j < height; j++) {
+            double y = yMax - j * (yMax - yMin) / (height - 1);
+            double z = 0; // For simplicity, using z=0 slice
+            double val = expr->evaluateWithXYZ(x, y, z);
+            if (std::fabs(val) < threshold) {
+                grid[j][i] = '*';
             }
         }
     }
-
-    // Nullhelyek keresése és kirajzolása
-    const double THRESHOLD = 0.1; // Finomabb küszöbérték a nullközelség meghatározásához
-    
-    for (int j = 0; j < ySamples; ++j) {
-        for (int i = 0; i < xSamples; ++i) {
-            if (!std::isfinite(values[j][i])) continue;
-            
-            // Előjel-váltás ellenőrzése jobbra és lefelé
-            bool signChangeHorizontal = (i < xSamples && std::isfinite(values[j][i + 1]) && 
-                                        values[j][i] * values[j][i + 1] <= 0);
-            
-            bool signChangeVertical = (j < ySamples && std::isfinite(values[j + 1][i]) && 
-                                      values[j][i] * values[j + 1][i] <= 0);
-            
-            if (signChangeHorizontal || signChangeVertical || std::abs(values[j][i]) < THRESHOLD) {
-                // Matematikai koordináták kiszámítása
-                double x = m_xMin + i * xStep;
-                double y = m_yMax - j * yStep;
-                
-                // Képernyő koordináták kiszámítása
-                auto [col, row] = mapToScreenCoordinates(x, y);
-                
-                if (row >= 0 && row < m_height && col >= 0 && col < m_width) {
-                    grid[row][col] = '*';
-                }
-            }
-        }
-    }
-
-    // Kirajzolás
-    std::cout << "Implicit graph for f(x,y)=0 in range x: [" << m_xMin << ", " << m_xMax
-        << "], y: [" << m_yMin << ", " << m_yMax << "]\n";
-    for (const auto& row : grid) {
-        for (char cell : row)
-            std::cout << cell;
-        std::cout << "\n";
-    }
-    
-    // Tengelyfeliratok
-    std::cout << std::left << std::setw(10) << m_yMin;
-    std::cout << std::right << std::setw(m_width - 20) << "y";
-    std::cout << std::right << std::setw(10) << m_yMax << "\n";
-    std::cout << std::left << std::setw(m_width / 3) << m_xMin;
-    std::cout << std::right << std::setw(m_width / 3) << "0";
-    std::cout << std::right << std::setw(m_width / 3) << m_xMax << "\n";
+    for (const auto& line : grid)
+        std::cout << line << std::endl;
 }
 
-// Javított 3D felületrajzolás
-void FunctionGraph::drawSurface3D() {
-    if (m_autoscale) {
-        auto [xMin, xMax, yMin, yMax] = findAutoRange();
-        double xPadding = (xMax - xMin) * 0.1;
-        double yPadding = (yMax - yMin) * 0.1;
-        if (xMin < xMax && yMin < yMax) {
-            m_xMin = xMin - xPadding;
-            m_xMax = xMax + xPadding;
-            m_yMin = yMin - yPadding;
-            m_yMax = yMax + yPadding;
-        }
-    }
-    
-    int gridWidth = m_width;
-    int gridHeight = m_height;
-    std::vector<std::vector<double>> zValues(gridHeight, std::vector<double>(gridWidth, 0));
-    double xStep = (m_xMax - m_xMin) / (gridWidth - 1);
-    double yStep = (m_yMax - m_yMin) / (gridHeight - 1);
-    double zMin = std::numeric_limits<double>::max();
-    double zMax = std::numeric_limits<double>::lowest();
-    
-    // Z értékek kiszámítása
-    for (int j = 0; j < gridHeight; ++j) {
-        // Matematikai y koordináta (alulról felfelé)
-        double y = m_yMin + (gridHeight - 1 - j) * yStep;
-        
-        for (int i = 0; i < gridWidth; ++i) {
-            // Matematikai x koordináta (balról jobbra)
-            double x = m_xMin + i * xStep;
-            
-            try {
-                double z = evaluateSurface(x, y);
-                zValues[j][i] = z;
-                if (std::isfinite(z)) {
-                    zMin = std::min(zMin, z);
-                    zMax = std::max(zMax, z);
-                }
-            }
-            catch (...) {
-                zValues[j][i] = std::numeric_limits<double>::quiet_NaN();
-            }
-        }
-    }
-    
-    // Színátmenet karakterkészlet - a sötétebb karakterek magasabb értékekhez
-    std::string gradient = " .:-=+*#%@";
-    int gradSize = gradient.size();
-    
-    // Grid feltöltése a z értékek alapján
-    std::vector<std::vector<char>> grid(gridHeight, std::vector<char>(gridWidth, ' '));
-    for (int j = 0; j < gridHeight; ++j) {
-        for (int i = 0; i < gridWidth; ++i) {
-            double z = zValues[j][i];
-            if (!std::isfinite(z))
-                grid[j][i] = ' ';
-            else {
-                int index = 0;
-                if (zMax > zMin) {
-                    // Normalizált z érték 0-1 között
-                    double normalized = (z - zMin) / (zMax - zMin);
-                    index = static_cast<int>(normalized * (gradSize - 1));
-                }
-                if (index < 0) index = 0;
-                if (index >= gradSize) index = gradSize - 1;
-                grid[j][i] = gradient[index];
-            }
-        }
-    }
-    
-    // Kirajzolás
-    std::cout << "3D Surface graph for z = f(x,y) in range x: [" << m_xMin << ", " << m_xMax
-        << "], y: [" << m_yMin << ", " << m_yMax << "], z: [" << zMin << ", " << zMax << "]\n";
-    for (const auto& row : grid) {
-        for (char cell : row)
-            std::cout << cell;
-        std::cout << "\n";
-    }
-    
-    // Gradiens magyarázat
-    std::cout << "Gradient: ";
-    for (int i = 0; i < gradSize; ++i) {
-        std::cout << gradient[i];
-    }
-    std::cout << " (Legalacsonyabb -> Legmagasabb)" << std::endl;
-}
-
-//////////////////////
-// MathModule modul //
-//////////////////////
-
-// A MathModule a Module interfész alapján készült (a "math.h" tartalmazza a Module definícióját)
+//------------------------------------------------------------
+// Math Module Implementation
+//------------------------------------------------------------
 class MathModule : public Module {
 public:
+    MathModule() {}
+    ~MathModule() {}
+
+    // The execute() method supports:
+    // 1. "?" command: display detailed help text.
+    // 2. "graph" command: draws the graph for the given expression.
+    //    - If only x variable is used: 1D graph.
+    //    - If x and y variables: implicit graph f(x,y)=0.
+    //    - If x, y, and z variables: basic 3D projection.
+    // 3. Otherwise: evaluate the expression (old method).
     void execute(const std::vector<std::string>& args) override {
         if (args.empty()) {
-            printHelp();
+            std::cerr << "Usage:" << std::endl;
+            std::cerr << "  help[/h/?]               - Display detailed help" << std::endl;
+            std::cerr << "  graph <expression>  - Draw graph of the expression" << std::endl;
+            std::cerr << "  <expression>        - Evaluate the expression" << std::endl;
             return;
         }
 
-        std::string command = args[0];
+        // Help command: ?
+        if (args[0] == "help" || args[0] == "h" || args[0] == "?") {
+            std::cout << "Math Module Help - Detailed Description:" << std::endl;
+            std::cout << "Supported operators: +, -, *, /, ^" << std::endl;
+            std::cout << "Supported functions:" << std::endl;
+            std::cout << "  sin(x), cos(x), tan(x), ctg(x)" << std::endl;
+            std::cout << "  arcsin(x), arccos(x), arctan(x), arcctg(x)" << std::endl;
+            std::cout << "  ln(x)   - natural logarithm" << std::endl;
+            std::cout << "  lg(x)   - base-10 logarithm" << std::endl;
+            std::cout << "  log<base>(x)  - logarithm with given base (e.g. log2(x))" << std::endl;
+            std::cout << "  V(x)    - square root (alternative notation)" << std::endl;
+            std::cout << "  |x|     - absolute value" << std::endl;
+            std::cout << "Variables:" << std::endl;
+            std::cout << "  x : independent variable" << std::endl;
+            std::cout << "  y : secondary variable (for implicit functions)" << std::endl;
+            std::cout << "  z : third variable (for 3D functions)" << std::endl;
+            std::cout << "  t : parameter (for parametric functions)" << std::endl;
+            std::cout << std::endl;
+            std::cout << "Usage:" << std::endl;
+            std::cout << "  To evaluate an expression, simply type it." << std::endl;
+            std::cout << "  To graph an expression, use:" << std::endl;
+            std::cout << "      graph <expression>" << std::endl;
+            std::cout << "  The graph command automatically adjusts the view based on function values." << std::endl;
+            std::cout << "  The module supports 2D graphs for explicit (y=f(x)) and implicit functions (f(x,y)=0)," << std::endl;
+            std::cout << "  and basic 3D projection for functions of three variables." << std::endl;
+            return;
+        }
 
-        // "graph" parancs: függvényrajz
-        if (command == "graph") {
+        // Graph mode: if first argument is "graph"
+        if (args[0] == "graph") {
             if (args.size() < 2) {
-                std::cout << "A 'graph' parancsnak legalább egy argumentumra van szüksége, például: graph 3*x^2+2*x+1\n";
+                std::cerr << "Error: graph command requires an expression." << std::endl;
                 return;
             }
-            std::string functionStr;
-            for (size_t i = 1; i < args.size(); ++i)
-                functionStr += args[i] + " ";
-            ExpressionParser parser(functionStr);
+            std::string exprStr;
+            for (size_t i = 1; i < args.size(); i++) {
+                if (!exprStr.empty()) exprStr += " ";
+                exprStr += args[i];
+            }
+            ExpressionParser parser(exprStr);
             Expression* expr = parser.parse();
             if (!expr) {
-                std::cout << "Hibás függvény kifejezés!\n";
+                std::cerr << "Error: Failed to parse expression." << std::endl;
                 return;
             }
-            if (!parser.hasX()) {
-                std::cout << "A függvény nem tartalmaz 'x' változót!\n";
-                delete expr;
-                return;
+            std::cout << "Drawing graph for: " << exprStr << std::endl;
+            if (!parser.hasY() && !parser.hasZ()) {
+                drawGraph1D(expr);
             }
-            // Az explicit 2D rajzot választjuk alapértelmezettként
-            FunctionGraph graph(expr, -10, 10, 60, 20, FunctionGraph::EXPLICIT_2D);
-            graph.draw();
+            else if (parser.hasY() && !parser.hasZ()) {
+                drawGraphImplicit2D(expr);
+            }
+            else if (parser.hasZ()) {
+                drawGraph3D(expr);
+            }
             delete expr;
             return;
         }
 
-        // "version" parancs: a modul verziószámának kiírása
-        if (command == "version") {
-            std::cout << "Math Module Version 1.0.0\n";
-            return;
+        // Default: evaluate the expression (old method)
+        std::string exprStr;
+        for (size_t i = 0; i < args.size(); i++) {
+            if (!exprStr.empty()) exprStr += " ";
+            exprStr += args[i];
         }
-
-        // Ha nem grafikus parancs, akkor a kifejezés értékelése
-        std::string expressionStr;
-        for (const auto& arg : args)
-            expressionStr += arg + " ";
-        ExpressionParser parser(expressionStr);
+        ExpressionParser parser(exprStr);
         Expression* expr = parser.parse();
         if (!expr) {
-            std::cout << "Hibás kifejezés formátum!\n";
+            std::cerr << "Error: Failed to parse expression." << std::endl;
             return;
         }
-        try {
-            double result = expr->evaluate();
-            std::cout << std::fixed << std::setprecision(8);
-            if (std::abs(result - std::round(result)) < 1e-10)
-                std::cout << std::setprecision(0);
-            std::cout << result << std::endl;
-        }
-        catch (const std::exception& e) {
-            std::cout << "Hiba a kifejezés kiértékelése közben: " << e.what() << std::endl;
-        }
+        std::cout << std::fixed << std::setprecision(6) << expr->evaluate() << std::endl;
         delete expr;
     }
-private:
-    void printHelp() {
-        std::cout << "Math modul használata:\n"
-            << "  <szám1> + <szám2>    Összeadás\n"
-            << "  <szám1> - <szám2>    Kivonás\n"
-            << "  <szám1> * <szám2>    Szorzás\n"
-            << "  <szám1> / <szám2>    Osztás\n"
-            << "  <szám> ^ <hatvány>   Hatványozás\n"
-            << "  V(<szám>)           Gyökvonás\n"
-            << "  ln(<szám>)          Természetes alapú logaritmus\n"
-            << "  log<alap>(<szám>)   Logaritmus adott alapra\n"
-            << "  lg(<szám>)          10-es alapú logaritmus\n"
-            << "  sin(<szám>)         Szinusz\n"
-            << "  cos(<szám>)         Koszinusz\n"
-            << "  tan(<szám>)         Tangens\n"
-            << "  ctg(<szám>)         Kotangens\n"
-            << "  arcsin(<szám>)      Arkusz szinusz\n"
-            << "  arccos(<szám>)      Arkusz koszinusz\n"
-            << "  arctan(<szám>)      Arkusz tangens\n"
-            << "  arcctg(<szám>)      Arkusz kotangens\n"
-            << "  e                   Euler-szám\n"
-            << "  m_PI                Pi konstans\n"
-            << "  x                   Változó (csak graph parancsban)\n"
-            << "  graph <kifejezés>   Függvény rajzolása\n"
-            << "  version             Modul verziószáma\n"
-            << "\n"
-            << "Példák:\n"
-            << "  3 + 4 * 2           Eredmény: 11 (műveleti sorrend érvényesül)\n"
-            << "  sin(m_PI/6)         Eredmény: 0.5\n"
-            << "  graph x^2 - 4       Parabola rajzolása\n";
+
+    std::string getVersion() const override {
+        return "Math Module Version 1.1.0";
     }
 };
 
-///////////////////////////
-// Modul létrehozása exportálással
-///////////////////////////
-
+// Exported function to create the module instance
 extern "C" __declspec(dllexport) Module* createModule() {
     return new MathModule();
 }
