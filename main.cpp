@@ -299,7 +299,7 @@ void printShellHelp() {
 	std::cout << "  exit                        - Exit the shell" << std::endl;
 	std::cout << "  help[/h/?]                  - Display help" << std::endl;
 	std::cout << "  version[/v/-v]              - Display shell version" << std::endl;
-	std::cout << "  dwl                         - Download module(s)" << std::endl;
+	std::cout << "  install[/dwl]               - Download module(s)" << std::endl;
 	std::cout << "  load                        - Load module(s)" << std::endl;
 	std::cout << "  update[/up]                 - Update module(s)" << std::endl;
 	std::cout << "  delete[/del]                - Delete module(s)" << std::endl;
@@ -455,7 +455,7 @@ int main() {
 			}
 		}
 		// Handle module-related commands: dwl, load, update/up, delete/del
-		else if (mainCommand == "dwl" || mainCommand == "load" || mainCommand == "update" ||
+		else if (mainCommand == "dwl" || mainCommand == "install" || mainCommand == "load" || mainCommand == "update" ||
 			mainCommand == "up" || mainCommand == "delete" || mainCommand == "del") {
 			bool allFlag = false;
 			std::vector<std::string> moduleNames;
@@ -482,13 +482,13 @@ int main() {
 					moduleNames.push_back(mod);
 				}
 			}
-			if (mainCommand == "dwl") {
+			if (mainCommand == "dwl" || mainCommand == "install") {
 				if (allFlag) {
-					std::cerr << "Error: dwl -all is not supported." << std::endl;
+					std::cerr << "Error: install[/dwl] -all is not supported." << std::endl;
 				}
 				else {
 					if (moduleNames.empty()) {
-						std::cerr << "ERROR: dwl <module_name>[, module_name...]" << std::endl;
+						std::cerr << "ERROR: install[/dwl]  <module_name>[, module_name...]" << std::endl;
 					}
 					else {
 						for (const auto& mod : moduleNames) {
